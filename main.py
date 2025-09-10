@@ -5,7 +5,7 @@ from keplergl import KeplerGl
 from streamlit_keplergl import keplergl_static
 from config.config_loader import get_config_with_name, update_map_style
 
-MAPBOX_TOKEN = st.secrets["MAPBOX_TOKEN"]
+MAPBOX_TOKEN = st.secrets["pk.eyJ1Ijoia2lteWVvbmp1biIsImEiOiJjbWVnZHNyZmsxMTVpMmtzZzMzMTU5ZGFyIn0.esI42zH2s8c_Dy26yj4uHw"]
 CUSTOM_MAP_ICON = st.secrets["CUSTOM_MAP_ICON"]
 CUSTOM_MAP_URL = st.secrets["CUSTOM_MAP_URL"]
 
