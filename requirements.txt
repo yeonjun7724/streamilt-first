@@ -1,4 +1,2 @@
-streamlit
 pandas
-matplotlib
-seaborn
+streamlit-keplergl
