@@ -1,30 +1,17 @@
 # app.py
 # ----------------------------------------------------
-# Streamlit 지도 시각화 튜토리얼 (단계별, 함수 없음)
-# - Mapbox 배경지도 강제 사용
-# - PathLayer 가시성 강화, 부재 시 즉시 경고
+# Streamlit 지도 시각화 (단계별, 함수 없음)
+# - OSM 타일을 TileLayer로 항상 깔기(백그라운드 필수 조건 충족)
+# - PathLayer에 "경로 설정" UI(선택/두께/투명도/색상) 실제 동작
 # ----------------------------------------------------
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import pydeck as pdk
-import json
-import os
+import json, os
 
-st.set_page_config(page_title="Streamlit 지도 시각화 튜토리얼", layout="wide")
-
-# ★★★ 반드시 본인 토큰으로 교체 ★★★
-MAPBOX_TOKEN = "pk.eyJ1Ijoia2lteWVvbmp1biIsImEiOiJjbWVnZHNyZmsxMTVpMmtzZzMzMTU5ZGFyIn0.esI42zH2s8c_Dy26yj4uHw"
-MAP_STYLE = "mapbox://styles/mapbox/light-v11"
-
-# Mapbox 강제 적용 (배경지도 필수)
-pdk.settings.mapbox_api_key = MAPBOX_TOKEN
-
-# 토큰 미교체 시 바로 알림
-if MAPBOX_TOKEN.endswith("_입력"):
-    st.error("Mapbox API 키를 MAPBOX_TOKEN에 입력하세요. (배경지도 필수 요구 사항)")
-    st.stop()
+st.set_page_config(page_title="Streamlit 지도 시각화 — Step-by-Step", layout="wide")
 
 # ---------------- 단계 선택 ----------------
 st.sidebar.markdown("### 강의 단계 (STEP)")
@@ -41,13 +28,14 @@ STEP = st.sidebar.selectbox(
 
 # ---------------- 데이터 불러오기 ----------------
 upl = st.sidebar.file_uploader("CSV / JSON / GEOJSON", type=["csv","json","geojson"])
-_ = st.sidebar.checkbox("샘플 데이터 사용(업로드가 없을 때 자동)", value=(upl is None))
+_ = st.sidebar.checkbox("샘플 데이터 사용(업로드 없을 때 자동)", value=(upl is None))
 
 if upl is not None:
     name = upl.name.lower()
     if name.endswith(".csv"):
         df = pd.read_csv(upl)
     else:
+        # JSON/GeoJSON 처리 (NDJSON 포함)
         try:
             df = pd.read_json(upl, lines=False)
         except ValueError:
@@ -111,6 +99,17 @@ mid_lat, mid_lon = df["lat"].median(), df["lon"].median()
 zoom_guess = 11 if df["lat"].std()<0.2 and df["lon"].std()<0.2 else 6
 view = pdk.ViewState(latitude=mid_lat, longitude=mid_lon, zoom=zoom_guess, bearing=0, pitch=0)
 
+# ---------------- OSM 배경 타일 (항상 켜짐) ----------------
+# OpenStreetMap 타일을 TileLayer로 추가(키/토큰 불필요)
+osm = pdk.Layer(
+    "TileLayer",
+    data="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    minZoom=0,
+    maxZoom=19,
+    tileSize=256,
+    opacity=1.0
+)
+
 # ---------------- STEP 2: 산점 ----------------
 if STEP.startswith("2)"):
     st.subheader("② 산점 지도")
@@ -123,10 +122,10 @@ if STEP.startswith("2)"):
         pickable=True
     )
     deck = pdk.Deck(
-        layers=[scatter],
+        layers=[osm, scatter],          # ← 항상 OSM을 첫 레이어로
         initial_view_state=view,
-        map_provider="mapbox",      # ★ Mapbox 강제
-        map_style=MAP_STYLE,
+        map_provider=None,              # ← 외부 베이스맵 안 씀
+        map_style=None,
         tooltip={"text":"lat: {lat}\nlon: {lon}"}
     )
     st.pydeck_chart(deck, use_container_width=True)
@@ -161,10 +160,10 @@ if STEP.startswith("3)"):
         pickable=True
     )
     deck = pdk.Deck(
-        layers=[scatter],
+        layers=[osm, scatter],
         initial_view_state=view,
-        map_provider="mapbox",
-        map_style=MAP_STYLE,
+        map_provider=None,
+        map_style=None,
         tooltip={"text":"lat: {lat}\nlon: {lon}"}
     )
     st.pydeck_chart(deck, use_container_width=True)
@@ -182,10 +181,10 @@ if STEP.startswith("4)"):
         radiusPixels=radius
     )
     deck = pdk.Deck(
-        layers=[heat],
+        layers=[osm, heat],
         initial_view_state=view,
-        map_provider="mapbox",
-        map_style=MAP_STYLE
+        map_provider=None,
+        map_style=None
     )
     st.pydeck_chart(deck, use_container_width=True)
     st.stop()
@@ -193,6 +192,34 @@ if STEP.startswith("4)"):
 # ---------------- STEP 5: 경로 ----------------
 if STEP.startswith("5)"):
     st.subheader("⑤ 경로(PathLayer) 추가")
+
+    # ===== 경로 설정창(실제 동작) =====
+    if df_paths is None:
+        st.warning("paths_sample.json 파일이 폴더에 없습니다. 샘플 경로를 보려면 파일을 넣어주세요.")
+        selectable_ids = []
+    elif "path_coords" not in df_paths.columns:
+        st.warning("paths_sample.json에 'path_coords' 열이 없습니다. [[lon,lat], ...] 리스트가 필요합니다.")
+        selectable_ids = []
+    else:
+        # id 열이 없으면 임시 id 부여
+        if "id" not in df_paths.columns:
+            df_paths["id"] = [f"route-{i+1}" for i in range(len(df_paths))]
+        selectable_ids = ["<전체>"] + df_paths["id"].astype(str).tolist()
+
+    col1, col2, col3 = st.columns([1.5,1,1])
+    with col1:
+        chosen = st.selectbox("경로 선택", selectable_ids, index=0 if selectable_ids else None)
+    with col2:
+        width_px = st.slider("선 두께(px)", 1, 12, 5)
+    with col3:
+        color_hex = st.color_picker("선 색상", "#0066FF")
+    # hex → rgba
+    color_hex = color_hex.lstrip("#")
+    color_rgb = tuple(int(color_hex[i:i+2], 16) for i in (0,2,4))
+    opacity_px = st.slider("선 투명도(%)", 20, 100, 90, step=5)
+    rgba = [color_rgb[0], color_rgb[1], color_rgb[2], int(255 * (opacity_px/100))]
+
+    # 베이스(산점) + 선택 경로 레이어
     base = pdk.Layer(
         "ScatterplotLayer",
         data=df_view,
@@ -201,22 +228,23 @@ if STEP.startswith("5)"):
         get_fill_color=[255,140,0,120],
         pickable=True
     )
-    layers = [base]
 
-    if df_paths is None:
-        st.warning("paths_sample.json 파일이 폴더에 없습니다. 샘플 경로를 보려면 파일을 넣어주세요.")
-    elif "path_coords" not in df_paths.columns:
-        st.warning("paths_sample.json에 'path_coords' 열이 없습니다. [[lon,lat], ...] 리스트를 가진 'path_coords'가 필요합니다.")
-    else:
-        # 가시성 강화: 픽셀 단위 최소/최대 폭 지정
+    layers = [osm, base]
+
+    # 선택된 경로만 필터링
+    if selectable_ids:
+        df_paths_view = df_paths.dropna(subset=["path_coords"]).copy()
+        if chosen and chosen != "<전체>":
+            df_paths_view = df_paths_view[df_paths_view["id"].astype(str) == chosen]
+
         path = pdk.Layer(
             "PathLayer",
-            data=df_paths.dropna(subset=["path_coords"]),
+            data=df_paths_view,
             get_path="path_coords",
-            get_color=[0,102,255,220],
+            get_color=rgba,
             width_scale=1,
-            width_min_pixels=3,
-            width_max_pixels=8,
+            width_min_pixels=width_px,
+            width_max_pixels=width_px,
             pickable=True
         )
         layers.append(path)
@@ -224,7 +252,7 @@ if STEP.startswith("5)"):
     deck = pdk.Deck(
         layers=layers,
         initial_view_state=view,
-        map_provider="mapbox",
-        map_style=MAP_STYLE
+        map_provider=None,
+        map_style=None
     )
     st.pydeck_chart(deck, use_container_width=True)
