@@ -1,3 +1,10 @@
+# app.py
+# ----------------------------------------------------
+# Streamlit 지도 시각화 튜토리얼 (단계별)
+# - 함수(def) 없이 직렬 실행
+# - secrets.toml 없이 Mapbox 토큰 직접 입력
+# ----------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,9 +14,10 @@ import json
 # 0) 기본 설정 ----------------------------------------
 st.set_page_config(page_title="Streamlit 지도 시각화 튜토리얼", layout="wide")
 
-# (직접 입력한 :contentReference[oaicite:0]{index=0} 토큰)
+# (직접 입력한 Mapbox 토큰)
 MAPBOX_TOKEN = "pk.eyJ1Ijoia2lteWVvbmp1biIsImEiOiJjbWVnZHNyZmsxMTVpMmtzZzMzMTU5ZGFyIn0.esI42zH2s8c_Dy26yj4uHw"
 MAP_STYLE = "mapbox://styles/mapbox/light-v11"
+pdk.settings.mapbox_api_key = MAPBOX_TOKEN   # ← 핵심 수정
 
 # 1) 단계 선택 ----------------------------------------
 st.sidebar.markdown("### 강의 단계 (STEP)")
@@ -32,7 +40,7 @@ if upl is not None:
     name = upl.name.lower()
     if name.endswith(".csv"):
         df = pd.read_csv(upl)
-    elif name.endswith(".json") or name.endswith(".geojson"):
+    else:
         try:
             df = pd.read_json(upl, lines=False)
         except ValueError:
@@ -105,7 +113,6 @@ if STEP.startswith("2)"):
         layers=[scatter],
         initial_view_state=view,
         map_style=MAP_STYLE,
-        mapbox_key=MAPBOX_TOKEN,
         tooltip={"text":"lat: {lat}\nlon: {lon}"}
     )
     st.pydeck_chart(deck, use_container_width=True)
@@ -143,7 +150,6 @@ if STEP.startswith("3)"):
         layers=[scatter],
         initial_view_state=view,
         map_style=MAP_STYLE,
-        mapbox_key=MAPBOX_TOKEN,
         tooltip={"text":"lat: {lat}\nlon: {lon}"}
     )
     st.pydeck_chart(deck, use_container_width=True)
@@ -163,8 +169,7 @@ if STEP.startswith("4)"):
     deck = pdk.Deck(
         layers=[heat],
         initial_view_state=view,
-        map_style=MAP_STYLE,
-        mapbox_key=MAPBOX_TOKEN
+        map_style=MAP_STYLE
     )
     st.pydeck_chart(deck, use_container_width=True)
     st.stop()
@@ -192,7 +197,6 @@ if STEP.startswith("5)"):
     deck = pdk.Deck(
         layers=layers,
         initial_view_state=view,
-        map_style=MAP_STYLE,
-        mapbox_key=MAPBOX_TOKEN
+        map_style=MAP_STYLE
     )
     st.pydeck_chart(deck, use_container_width=True)
